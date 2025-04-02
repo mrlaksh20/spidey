@@ -1,0 +1,8 @@
+# Ignore Go build files
+bin/
+*.exe
+*.out
+*.o
+
+# Ignore dependencies if using Go modules
+vendor/
