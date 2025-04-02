@@ -37,7 +37,7 @@ echo -e "\e[1;91m
                                                                +++   =+            +=  ++++                                                              
                                                                  ++++++            +++++                                                                 
                                                                   +   +++********+++===                                                                  
-                                                                   *   +          +                 🕸️   Developed by:"${YELLOW} Parthiban, Rageswaran, Laksh${RESET}"
+                                                                   *   +          +                 🕸️   Developed by:"${YELLOW}Laksh${RESET}"
                                                                                  *                  [+] Version: v12.20.0
 \e[0m"
 
