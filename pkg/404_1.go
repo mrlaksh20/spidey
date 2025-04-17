@@ -165,9 +165,9 @@ func checkWebArchive(targetURL, timestampFile, yearFile string) {
 	}
 
 	var archiveResponse struct {
-		FirstTS string            json:"first_ts"
-		LastTS  string            json:"last_ts"
-		Status  map[string]string json:"status"
+		FirstTS string           `json:"first_ts"`
+		LastTS  string           `json:"last_ts"`
+		Status  map[string]string`json:"status"`
 	}
 
 	if err := json.Unmarshal(body, &archiveResponse); err != nil {
