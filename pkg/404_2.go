@@ -1,3 +1,4 @@
+// MODIFIED: 404_2.go
 package main
 
 import (
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"sort"
 )
 
 // Web Archive API URL format
@@ -34,7 +36,6 @@ var headers = map[string]string{
 	"Cookie":           "donation-identifier=; donation=x; view-search=tiles; showdetails-search=; abtest-identifier=",
 }
 
-// Flexible JSON response structure
 type ArchiveResponse struct {
 	Items []interface{} `json:"items"`
 }
@@ -44,7 +45,7 @@ var (
 	targetFolder   string
 	targetFileName string
 	wg             sync.WaitGroup
-	semaphore      = make(chan struct{}, 5) // Limit concurrency to 5 goroutines
+	semaphore      = make(chan struct{}, 5)
 )
 
 func main() {
@@ -64,20 +65,18 @@ func main() {
 
 	scanner := bufio.NewScanner(file)
 
-	// Process each line concurrently
 	for scanner.Scan() {
 		line := scanner.Text()
 		wg.Add(1)
 		go processLine(line)
 	}
 
-	wg.Wait() // Wait for all goroutines to finish
+	wg.Wait()
 
 	if err := scanner.Err(); err != nil {
 		fmt.Printf("❌ Error reading file: %v\n", err)
 	}
 
-	// Trigger the next script after all URLs are processed
 	trigger404_3(targetFolder, targetFileName)
 }
 
@@ -102,7 +101,7 @@ func processLine(line string) {
 			continue
 		}
 
-		semaphore <- struct{}{} // Acquire a slot
+		semaphore <- struct{}{}
 		wg.Add(1)
 		go fetchArchiveData(url, yearInt)
 	}
@@ -118,7 +117,7 @@ func parseYear(year string) int {
 
 func fetchArchiveData(url string, year int) {
 	defer wg.Done()
-	defer func() { <-semaphore }() // Release a slot
+	defer func() { <-semaphore }()
 
 	apiURL := fmt.Sprintf(archiveAPI, url, year)
 
@@ -133,7 +132,6 @@ func fetchArchiveData(url string, year int) {
 	}
 
 	client := &http.Client{Timeout: 20 * time.Second}
-
 	maxRetries := 5
 	var resp *http.Response
 
@@ -167,7 +165,7 @@ func fetchArchiveData(url string, year int) {
 }
 
 func processArchiveData(url string, year int, items []interface{}) {
-	var validDates []string
+	var allValidDates []string
 
 	for _, item := range items {
 		switch v := item.(type) {
@@ -180,26 +178,32 @@ func processArchiveData(url string, year int, items []interface{}) {
 			statusCode, ok2 := toInt(v[1])
 			snapshots, ok3 := toInt(v[2])
 
-			// ✅ Handle case where statusCode is "-"
 			if !ok2 {
-				statusCode = 200 // Assume it's valid since "-" was found
+				statusCode = 200
 			}
 
 			if !ok1 || !ok3 {
 				continue
 			}
 
-			// ✅ Correct 301 logic: Only take it if snapshots > 1
 			if statusCode == 200 || (statusCode == 301 && snapshots > 1) || v[1] == "-" {
-				validDates = append(validDates, fmt.Sprintf("%d%s", year, formatMMDD(mmdd)))
+				fullDate := fmt.Sprintf("%d%s", year, formatMMDD(mmdd))
+				allValidDates = append(allValidDates, fullDate)
 			}
 		default:
 			fmt.Printf("⚠️ Unexpected item format: %v\n", v)
 		}
 	}
 
-	if len(validDates) > 0 {
-		saveResults(url, validDates)
+	// 🧠 LIMIT: Only pick first 3 dates MAX per year
+	sort.Strings(allValidDates)
+	limitedDates := allValidDates
+	if len(allValidDates) > 3 {
+		limitedDates = allValidDates[:2]
+	}
+
+	if len(limitedDates) > 0 {
+		saveResults(url, limitedDates)
 	}
 }
 
