@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	MaxWorkers = 15
+	MaxWorkers = 10
 	MaxRetries = 3
 	SnapDir    = "snapurls"
 	RegexFile  = "regex_patterns/regex.json"
