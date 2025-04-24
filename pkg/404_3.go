@@ -54,7 +54,7 @@ func processFile(tsFile string) {
 	// Define output files
 	ymdhms2File := filepath.Join(yearFileDir, fmt.Sprintf("%s_ymdhms2.txt", targetFileName))
 	ymdhms1File := filepath.Join(yearFileDir, fmt.Sprintf("%s_ymdhms1.txt", targetFileName))
-	scanFolder := "snapsurls"
+	scanFolder := "snapurls"
 	scanFile := filepath.Join(scanFolder, fmt.Sprintf("%s_scan.txt", targetFileName))
 
 	// Create scanFolder if it doesn't exist
