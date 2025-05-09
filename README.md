@@ -1,4 +1,4 @@
-           <-----------------------------------STRUCTURE------------------------------------>
+```           <-----------------------------------STRUCTURE------------------------------------>
 
  spidey/
 ├── go.mod
@@ -51,5 +51,6 @@
 ├── snapurls/
 │   └── example.com_js200_scan.txt   <-- 🕵️‍♂️ Extracted snapshot URLs
 └── README.md                         <-- (Optional but you should flex this 😎)
+```
 
 
