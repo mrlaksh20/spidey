@@ -1,4 +1,4 @@
-module recon-tool
+module spidey
 
 go 1.23.4
 
