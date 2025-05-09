@@ -1,4 +1,32 @@
-```           <-----------------------------------STRUCTURE------------------------------------>
+### Installation Instructions
+
+To install and run the tool, follow these steps:
+
+1. Clone the repository:
+    ```bash
+    git clone https://github.com/lakshlucky20/spidey
+    ```
+
+2. Navigate to the project directory:
+    ```bash
+    cd spidey
+    ```
+
+3. Install the dependencies:
+    ```bash
+    go mod tidy
+    ```
+
+4. Run the tool:
+    ```bash
+    bash run.sh
+    ```
+
+Now you are good to go! 🚀
+
+
+```         
+                          <-----------------------------------STRUCTURE------------------------------------>
 
  spidey/
 ├── go.mod
