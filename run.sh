@@ -41,23 +41,6 @@ echo -e "\e[1;91m
                                                                                  *                  [+] Version: v12.20.0
 \e[0m"
 
-get_choice() {
-    local prompt="$1"
-    local input_var
-    while true; do
-        read -e -p "$(echo -e "$prompt")" input_var
-        input_var=$(echo "$input_var" | tr -d '[:space:]')
-
-        # Validate input (must be 1, 2, or 3)
-        if [[ "$input_var" =~ ^[123]$ ]]; then
-            echo "$input_var"
-            return
-        else
-            echo -e "${RED}[!] Invalid choice! Please enter 1, 2, or 3.${RESET}"
-        fi
-    done
-}
-
 # Function to get valid domain input
 get_input() {
     local prompt="$1"
@@ -78,24 +61,13 @@ get_input() {
 
 # Display menu **before** asking for input
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "${BOLD}${YELLOW} [?] Choose an option: ${RESET}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "  ${CYAN}1️⃣  Gather All Urls ${RESET}"
-echo -e "  ${CYAN}2️⃣  Get Filter Urls ${RESET}"
-echo -e "  ${CYAN}3️⃣  Both (1 & 2) ${RESET}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-
-# Get valid choice input **AFTER** showing the menu
-choice=$(get_choice "${YELLOW}[>]${RESET} Enter your choice (1/2/3): ")
-
-echo ""
+echo -e "${BOLD}${YELLOW} [?] Domain Input ${RESET}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
 # Get valid domain input
 domain=$(get_input "${YELLOW}[>]${RESET} Enter the domain (e.g., example.com): ")
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo ""
 
 # Check and create 'reports' folder if it doesn't exist
 if [ ! -d "reports" ]; then
@@ -104,23 +76,9 @@ if [ ! -d "reports" ]; then
 fi
 echo ""
 
-# Run passive recon based on choice
-case $choice in
-  1)
-    echo -e "${BLUE}[i]${RESET} Running ${CYAN}All URL test${RESET}..."
-    go run pkg/urls_all.go "$domain"
-    ;;
-  2)
-    echo -e "${BLUE}[i]${RESET} Running ${CYAN}Filter URL test${RESET}..."
-    go run pkg/urls_filter.go "$domain"
-    ;;
-  3)
-    echo -e "${BLUE}[i]${RESET} Running ${CYAN}All URL test${RESET}..."
-    go run pkg/urls_all.go "$domain"
-    echo -e "${BLUE}[i]${RESET} Running ${CYAN}Filter URL test${RESET}..."
-    go run pkg/urls_filter.go "$domain"
-    ;;
-esac
+# Run passive recon - Only run All URL test
+echo -e "${BLUE}[i]${RESET} Getting Urls from ${CYAN} WEB ARCHIVE ${RESET}..."
+go run pkg/urls_all.go "$domain"
 echo ""
 
 # Ask if user wants to start active recon
@@ -152,5 +110,25 @@ fi
 echo ""
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "${YELLOW}[i]${RESET}To Probe request,use: ${GREEN}go run pkg/probe.go${RESET}"
+probe_req=$(get_input "${YELLOW}[i]${RESET}  wants to Probe categorized Urls? (y/n): ")
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+if [[ "$probe_req" =~ ^[Yy]$ ]]; then
+	echo -e "${GREEN}🚀 Executing...${RESET}"
+	go run pkg/probe.go
+else
+	echo -e "${RED}🛑 Probing step inturrepted...Run this command ${cyan}bash pkg/probe.go ${reset}if u interupted accidently... ${RESET}"
+fi
+echo ""
+
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+snapurls_req=$(get_input "${YELLOW}[i]${RESET}  want to retrive every timeline of snapurls? (y/n): ")
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+if [[ "$snapurls_req" =~ ^[Yy]$ ]]; then
+        echo -e "${GREEN}🚀 Executing...${RESET}"
+	bash pkg/404_choose.sh
+else
+        echo -e "${RED}[i] process intrupted,run this command ${green} bash pkg/404_choose.sh if u accidently intrupt ${RESET}"
+fi
+echo ""
+
+go run pkg/scan.go
