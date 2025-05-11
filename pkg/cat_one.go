@@ -38,90 +38,77 @@ var patterns = map[string]*regexp.Regexp{
 }
 
 func main() {
-	// Get live report files from "reports" directory
-	reportDir := "reports"
-	reportFiles, err := getReportFiles(reportDir)
-	if err != nil {
-		fmt.Println("❌ Error reading report directory:", err)
-		return
+	// Get file from CLI if passed
+	var selectedFile string
+	if len(os.Args) > 1 {
+		selectedFile = os.Args[1]
+		// Validate file exists
+		if _, err := os.Stat(selectedFile); os.IsNotExist(err) {
+			fmt.Println("❌ Provided file does not exist:", selectedFile)
+			return
+		}
+		fmt.Println("🧠 [AUTO] File selected via CLI:", selectedFile)
+	} else {
+		// Manual selection as fallback
+		reportDir := "reports"
+		reportFiles, err := getReportFiles(reportDir)
+		if err != nil {
+			fmt.Println("❌ Error reading report directory:", err)
+			return
+		}
+
+		if len(reportFiles) == 0 {
+			fmt.Println("❌ No report files found in", reportDir)
+			return
+		}
+
+		fmt.Println("\n📂 Available Report Files:")
+		for i, file := range reportFiles {
+			fmt.Printf("   [%d] %s\n", i+1, file)
+		}
+
+		fmt.Print("\n👉 Enter the file number to categorize: ")
+		reader := bufio.NewReader(os.Stdin)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("❌ Error reading input:", err)
+			return
+		}
+
+		input = strings.TrimSpace(input)
+		if input == "" {
+			fmt.Println("❌ No input provided. Exiting.")
+			return
+		}
+
+		choice, err := strconv.Atoi(input)
+		if err != nil || choice < 1 || choice > len(reportFiles) {
+			fmt.Println("❌ Invalid choice. Exiting.")
+			return
+		}
+
+		selectedFile = filepath.Join(reportDir, reportFiles[choice-1])
+		fmt.Printf("✅ You selected: %s\n", selectedFile)
 	}
-
-	if len(reportFiles) == 0 {
-		fmt.Println("❌ No report files found in", reportDir)
-		return
-	}
-
-	// Display available report files
-	fmt.Println("\n📂 Available Report Files:")
-	for i, file := range reportFiles {
-		fmt.Printf("   [%d] %s\n", i+1, file)
-	}
-
-	// Ask user to choose a file
-	fmt.Print("\n👉 Enter the file number to categorize: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		fmt.Println("❌ Error reading input:", err)
-		return
-	}
-
-	input = strings.TrimSpace(input) // Trim any newlines or spaces
-
-	// Check if input is empty
-	if input == "" {
-		fmt.Println("❌ No input provided. Exiting.")
-		return
-	}
-
-	// Convert input to an integer
-	choice, err := strconv.Atoi(input)
-	if err != nil {
-	fmt.Println("❌ Invalid input. Please enter a number.")
-	return
-	}
-
-	if choice < 1 || choice > len(reportFiles) {
-	fmt.Println("❌ Invalid choice. Exiting.")
-	return
-	}
-
-
-	// Get the selected filename
-	selectedFile := reportFiles[choice-1]
-	fmt.Printf("✅ You selected: %s\n", selectedFile)
 
 	// Extract domain name from filename
-	domainName := strings.Split(selectedFile, "_")[0]
+	domainName := strings.Split(filepath.Base(selectedFile), "_")[0]
 
-	// Create analytics directory if not exists
-	analyticsDir := "analytics"
-	if _, err := os.Stat(analyticsDir); os.IsNotExist(err) {
-		if err := os.Mkdir(analyticsDir, 0755); err != nil {
-			fmt.Println("❌ Failed to create analytics directory:", err)
-			return
-		}
+	// Create analytics directory structure
+	analyticsDir := filepath.Join("analytics", domainName)
+	if err := os.MkdirAll(analyticsDir, 0755); err != nil {
+		fmt.Println("❌ Failed to create analytics directory:", err)
+		return
 	}
 
-	// Create domain-specific directory inside analytics
-	domainDir := filepath.Join(analyticsDir, domainName)
-	if _, err := os.Stat(domainDir); os.IsNotExist(err) {
-		if err := os.Mkdir(domainDir, 0755); err != nil {
-			fmt.Println("❌ Failed to create domain directory:", err)
-			return
-		}
-	}
-
-	// Read URLs from the selected file
-	urls, err := readLines(filepath.Join(reportDir, selectedFile))
+	// Read and categorize
+	urls, err := readLines(selectedFile)
 	if err != nil {
 		fmt.Println("❌ Error reading file:", err)
 		return
 	}
 
-	// Categorize URLs
-	if err := categorizeURLs(urls, domainDir); err != nil {
+	if err := categorizeURLs(urls, analyticsDir); err != nil {
 		fmt.Println("❌ Error categorizing URLs:", err)
 		return
 	}
