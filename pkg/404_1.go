@@ -1,126 +1,151 @@
+// 📦 File: 404_1.go
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-	"os/exec"
+
 	"golang.org/x/time/rate"
 )
 
-// Rate limiting and HTTP client settings
 var (
-	wg      sync.WaitGroup
-	limiter = rate.NewLimiter(5, 1) // 5 requests per second
-	client  = &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 50,
-			IdleConnTimeout:     30 * time.Second,
-		},
-	}
+	wg            sync.WaitGroup
+	limiter       = rate.NewLimiter(10, 1) // upped rate limit for smoother high-thread load
+	client        = &http.Client{Timeout: 20 * time.Second}
+	seenTimestamps sync.Map
+	seenYears     sync.Map
+	threadPool    = 10 // concurrency level
 )
 
-// Using sync.Map to avoid concurrent map access issues
-var seenTimestamps sync.Map
-var seenYears sync.Map
-
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("❌ Usage: go run 404_1.go <file_path>")
-		return
-	}
+	flagSet := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	fileFlags := flagSet.String("f", "", "Comma-separated list of files to process")
+	flagSet.Parse(os.Args[2:])
+	targetPath := os.Args[1]
 
-	selectedFilePath := os.Args[1]
-	fmt.Printf("\n🚀 Running 404_1.go with target: %s\n", selectedFilePath)
-
-	// Extract target folder (domain) and file base
-	targetFolder, fileBase := extractTargetInfo(selectedFilePath)
-	if targetFolder == "" || fileBase == "" {
-		fmt.Println("❌ Error: Could not extract target information from path!")
-		return
-	}
-
-	// Create 404_analysis folder
-	rootAnalysisFolder := filepath.Join("404_analysis", targetFolder)
-	if _, err := os.Stat(rootAnalysisFolder); os.IsNotExist(err) {
-		err := os.MkdirAll(rootAnalysisFolder, 0755)
-		if err != nil {
-			fmt.Println("❌ Error creating 404_analysis folder:", err)
+	fileList := []string{}
+	if *fileFlags != "" {
+		fmt.Println("🧩 Multiple File Mode Activated")
+		files := strings.Split(*fileFlags, ",")
+		for _, file := range files {
+			trimmed := strings.TrimSpace(file)
+			if trimmed != "" {
+				fileList = append(fileList, trimmed)
+			}
+		}
+		if len(fileList) == 0 {
+			fmt.Println("❌ No valid files specified in -f flag.")
 			return
 		}
-		fmt.Println("\n📁 404_analysis folder created in ~/recon-tool/")
+		processMultipleFiles(targetPath, fileList)
+	} else {
+		fmt.Printf("📁 Single File Mode: %s\n", targetPath)
+		runYearExtraction(targetPath)
+	}
+}
+
+// 🔁 MULTIPLE FILE PROCESSING
+func processMultipleFiles(folder string, files []string) {
+	var yearFiles []string
+
+	for _, f := range files {
+		path := filepath.Join(folder, f+".txt")
+		fmt.Printf("\n📂 Processing file: %s\n", path)
+		runYearExtraction(path)
+
+		// Store generated _yr.txt for later trigger
+		target, base := extractTargetInfo(path)
+		yrFile := filepath.Join("404_analysis", target, fmt.Sprintf("%s_%s_yr.txt", target, base))
+		yearFiles = append(yearFiles, yrFile)
 	}
 
-	// Read file contents
-	urls, err := os.ReadFile(selectedFilePath)
+	// Trigger 404_2.go on all generated _yr.txt files with delay
+	fmt.Println("\n🔁 Triggering 404_2.go for all _yr.txt files...")
+	for _, yrFile := range yearFiles {
+		fmt.Printf("\n🔥 Running 404_2.go with: %s\n", yrFile)
+		cmd := exec.Command("go", "run", "pkg/404_2.go", yrFile)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("❌ Error running 404_2.go on %s: %v\n", yrFile, err)
+		}
+		time.Sleep(3 * time.Second) // ⏱️ delay between triggers
+	}
+}
+
+// 💥 SNAPSHOT CHECK WITH WORKER POOL
+func runYearExtraction(filePath string) {
+	targetFolder, fileBase := extractTargetInfo(filePath)
+	if targetFolder == "" || fileBase == "" {
+		fmt.Println("❌ Could not parse target info")
+		return
+	}
+
+	rootAnalysisFolder := filepath.Join("404_analysis", targetFolder)
+	_ = os.MkdirAll(rootAnalysisFolder, 0755)
+
+	urls, err := os.ReadFile(filePath)
 	if err != nil {
-		fmt.Println("❌ Error reading file:", err)
+		fmt.Printf("❌ Read error: %v\n", err)
+		return
+	}
+	lines := strings.Split(strings.TrimSpace(string(urls)), "\n")
+	if len(lines) == 0 {
+		fmt.Println("❌ No URLs in file!")
 		return
 	}
 
-	urlList := strings.Split(strings.TrimSpace(string(urls)), "\n")
-	if len(urlList) == 0 {
-		fmt.Println("❌ No URLs found in file!")
-		return
-	}
-
-	// Define output file names
 	timestampFile := filepath.Join(rootAnalysisFolder, fmt.Sprintf("%s_%s_ymdhms1.txt", targetFolder, fileBase))
 	yearFile := filepath.Join(rootAnalysisFolder, fmt.Sprintf("%s_%s_yr.txt", targetFolder, fileBase))
 
-	for _, targetURL := range urlList {
+	urlChan := make(chan string, threadPool)
+
+	// Spin up worker goroutines
+	for i := 0; i < threadPool; i++ {
 		wg.Add(1)
-		go func(url string) {
+		go func() {
 			defer wg.Done()
-			limiter.Wait(context.Background()) // Rate limiting
-			fmt.Printf("\n🌐 Checking URL: %s\n", url)
-			checkWebArchive(url, timestampFile, yearFile)
-		}(targetURL)
+			for u := range urlChan {
+				limiter.Wait(context.Background())
+				fmt.Printf("🌐 Checking: %s\n", u)
+				checkWebArchive(u, timestampFile, yearFile)
+			}
+		}()
 	}
 
+	for _, url := range lines {
+		urlChan <- url
+	}
+	close(urlChan)
 	wg.Wait()
-	fmt.Println("\n✅ All URLs checked!")
-
-	// Trigger 404_2.go with correct format
-	triggerScript2(targetFolder, fileBase)
+	fmt.Println("✅ Done:", filePath)
 }
 
-// Extracts target folder name (domain) and file base (file type)
 func extractTargetInfo(path string) (string, string) {
-	// Normalize path separators
 	path = filepath.ToSlash(path)
-	
-	// Ensure proper split
 	parts := strings.Split(path, "/")
 	if len(parts) < 3 {
-		return "", "" // Invalid path structure
+		return "", ""
 	}
-
-	targetFolder := parts[1]  // Extract domain name
-	fileName := parts[len(parts)-1]
-	fileBase := strings.TrimSuffix(fileName, ".txt") // Extract file base
-
+	targetFolder := parts[1]
+	file := filepath.Base(path)
+	fileBase := strings.TrimSuffix(file, ".txt")
 	return targetFolder, fileBase
 }
 
-// Fetches Web Archive snapshots and saves results
 func checkWebArchive(targetURL, timestampFile, yearFile string) {
 	apiURL := fmt.Sprintf("https://web.archive.org/__wb/sparkline?output=json&url=%s&collection=web", targetURL)
-
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		fmt.Println("❌ Error creating request:", err)
-		return
-	}
-
+	req, _ := http.NewRequest("GET", apiURL, nil)
 	// Set headers
         req.Header.Set("Host", "web.archive.org")
         req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0")
@@ -132,104 +157,74 @@ func checkWebArchive(targetURL, timestampFile, yearFile string) {
         req.Header.Set("Sec-Fetch-Mode", "cors")
         req.Header.Set("Sec-Fetch-Site", "same-origin")
         req.Header.Set("Priority", "u=4")
-        req.Header.Set("Te", "trailers")        
+        req.Header.Set("Te", "trailers")
 	client := &http.Client{Timeout: 20 * time.Second}
 
-	// Retry logic
-	maxRetries := 5
 	var resp *http.Response
-	for attempt := 1; attempt <= maxRetries; attempt++ {
+	var err error
+	for i := 1; i <= 5; i++ {
 		resp, err = client.Do(req)
 		if err == nil {
-			break // Success
+			break
 		}
-		fmt.Printf("❌ Attempt %d/%d failed: %v\n", attempt, maxRetries, err)
-		time.Sleep(time.Duration(attempt) * 3 * time.Second) // Exponential backoff
+		fmt.Printf("⚠️ Retry %d: %v\n", i, err)
+		time.Sleep(time.Duration(i) * 3 * time.Second)
 	}
-
 	if err != nil {
-		fmt.Printf("❌ Request failed after %d retries: %v\n", maxRetries, err)
+		fmt.Println("❌ Final failure:", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("⚠️ Skipping URL: %s (HTTP %d)\n", targetURL, resp.StatusCode)
+		fmt.Printf("⚠️ Bad response: %d\n", resp.StatusCode)
 		return
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println("❌ Error reading response body:", err)
-		return
-	}
-
+	body, _ := io.ReadAll(resp.Body)
 	var archiveResponse struct {
-		FirstTS string           `json:"first_ts"`
-		LastTS  string           `json:"last_ts"`
-		Status  map[string]string`json:"status"`
+		FirstTS string            `json:"first_ts"`
+		LastTS  string            `json:"last_ts"`
+		Status  map[string]string `json:"status"`
 	}
-
 	if err := json.Unmarshal(body, &archiveResponse); err != nil {
-		fmt.Println("❌ Error parsing JSON:", err)
+		fmt.Println("❌ JSON parse error:", err)
 		return
 	}
 
-	// Avoid duplicate timestamp URLs
 	if archiveResponse.FirstTS == archiveResponse.LastTS {
 		for _, status := range archiveResponse.Status {
 			if strings.Contains(status, "2") {
-				snapshotURL := fmt.Sprintf("https://web.archive.org/web/%sif_/%s", archiveResponse.FirstTS, targetURL)
-				if _, exists := seenTimestamps.Load(snapshotURL); !exists {
-					fmt.Printf("✅ 1 snap found for timeline %s:\n%s\n", archiveResponse.FirstTS[:4], snapshotURL)
-					saveToFile(timestampFile, snapshotURL)
-					seenTimestamps.Store(snapshotURL, true)
+				snap := fmt.Sprintf("https://web.archive.org/web/%sif_/%s", archiveResponse.FirstTS, targetURL)
+				if _, ok := seenTimestamps.Load(snap); !ok {
+					saveToFile(timestampFile, snap)
+					seenTimestamps.Store(snap, true)
 				}
-				return
 			}
 		}
 	} else {
 		var years []string
-		for year, status := range archiveResponse.Status {
+		for yr, status := range archiveResponse.Status {
 			if strings.Contains(status, "2") {
-				years = append(years, year)
+				years = append(years, yr)
 			}
 		}
 		if len(years) > 0 {
-			output := fmt.Sprintf("%s:[%s]", targetURL, strings.Join(years, ","))
-			if _, exists := seenYears.Load(output); !exists {
-				fmt.Println(output)
-				saveToFile(yearFile, output)
-				seenYears.Store(output, true)
+			line := fmt.Sprintf("%s:[%s]", targetURL, strings.Join(years, ","))
+			if _, ok := seenYears.Load(line); !ok {
+				saveToFile(yearFile, line)
+				seenYears.Store(line, true)
 			}
 		}
 	}
 }
 
-// Saves data to a file
-func saveToFile(filename, data string) {
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+func saveToFile(file, data string) {
+	f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Println("❌ Error opening file:", err)
+		fmt.Println("❌ Write error:", err)
 		return
 	}
-	defer file.Close()
-
-	if _, err := file.WriteString(data + "\n"); err != nil {
-		fmt.Println("❌ Error writing to file:", err)
-	}
-}
-
-// Triggers 404_2.go with the correct argument format
-func triggerScript2(target, fileBase string) {
-	yearFile := fmt.Sprintf("404_analysis/%s/%s_%s_yr.txt", target, target, fileBase)
-	fmt.Printf("\n💀 Extracting MMDD, process done silently, with this file: %s\n", yearFile)
-
-	cmd := exec.Command("go", "run", "pkg/404_2.go", yearFile)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		fmt.Println("❌ Error running 404_2.go:", err)
-	}
+	defer f.Close()
+	f.WriteString(data + "\n")
 }
