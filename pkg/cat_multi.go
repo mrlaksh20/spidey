@@ -39,6 +39,36 @@ var patterns = map[string]*regexp.Regexp{
 }
 
 func main() {
+	// Check for auto-mode args
+	if len(os.Args) == 3 {
+		allFile := os.Args[1]
+		activeFile := os.Args[2]
+
+		fmt.Println("🤖 Auto-mode activated!")
+		fmt.Println("📁 All File   :", allFile)
+		fmt.Println("📁 Active File:", activeFile)
+
+		files := []string{
+			filepath.Base(allFile),
+			filepath.Base(activeFile),
+		}
+
+		// Place files inside "reports" directory for consistency
+		for _, f := range files {
+			if _, err := os.Stat(filepath.Join("reports", f)); os.IsNotExist(err) {
+				fmt.Println("❌ File not found in reports/:", f)
+				return
+			}
+		}
+
+		domain := extractBaseNames(files)[0]
+		targetDir := createAnalyticsFolder(domain, files)
+		mergedURLs := deduplicateFiles(files)
+		processFiles(mergedURLs, targetDir)
+		return
+	}
+
+	// Manual mode
 	fmt.Println("\n---------- Multi-files Categorization ----------")
 	fmt.Println("Choose an option:")
 	fmt.Println("[1] Analyze multiple files")
@@ -65,7 +95,8 @@ func analyzeMultipleFiles() {
 		return
 	}
 
-	targetDir := createAnalyticsFolder(selectedFiles)
+	domain := extractBaseNames(selectedFiles)[0]
+	targetDir := createAnalyticsFolder(domain, selectedFiles)
 	processFiles(selectedFiles, targetDir)
 }
 
@@ -123,10 +154,9 @@ func getFileSelections() []string {
 	return selectedFiles
 }
 
-func createAnalyticsFolder(selectedFiles []string) string {
+func createAnalyticsFolder(domain string, selectedFiles []string) string {
 	analyticsDir := "analytics"
-	folderName := strings.Join(extractBaseNames(selectedFiles), "_")
-	targetDir := filepath.Join(analyticsDir, folderName)
+	targetDir := filepath.Join(analyticsDir, domain+"_deduplicates")
 
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		fmt.Println("❌ Failed to create analytics folder:", err)
