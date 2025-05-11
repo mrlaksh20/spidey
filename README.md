@@ -19,7 +19,7 @@ To install and run the tool, follow these steps:
 
 4. Run the tool:
     ```bash
-    bash run.sh
+    bash run.sh -a  #we have upgraded to FULL AUTOMATION
     ```
 
 Now you are good to go! 🚀
