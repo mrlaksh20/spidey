@@ -19,6 +19,89 @@ const probeFolder = "probe"
 var stopCurrent bool // Only stops the current file's probing, not the whole process
 
 func main() {
+	var targetFolder string
+	var fileTypes string
+
+	// Custom flag-style logic (basic and flexible)
+	args := os.Args[1:]
+	if len(args) == 0 {
+		fmt.Println("Usage: go run pkg/probe.go <target-folder> [-f all|html,js,json]")
+		fmt.Println("       Or run without args to enter manual mode.")
+		runManualMode()
+		return
+	}
+
+	targetFolder = args[0]
+
+	if len(args) > 2 && args[1] == "-f" {
+		fileTypes = args[2]
+	} else {
+		fmt.Println("❌ Invalid flags. Usage: go run pkg/probe.go <target-folder> -f all|html,js,json")
+		return
+	}
+
+	targetProbePath := filepath.Join(probeFolder, filepath.Base(targetFolder))
+	if err := os.MkdirAll(targetProbePath, os.ModePerm); err != nil {
+		fmt.Println("❌ Error creating probe folder:", err)
+		return
+	}
+
+	files, err := os.ReadDir(targetFolder)
+	if err != nil {
+		fmt.Println("❌ Error reading target folder:", err)
+		return
+	}
+
+	var fileList []string
+	if fileTypes == "all" {
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), ".txt") {
+				fileList = append(fileList, file.Name())
+			}
+		}
+	} else {
+		types := strings.Split(fileTypes, ",")
+		for _, ext := range types {
+			name := ext + ".txt"
+			for _, file := range files {
+				if file.Name() == name {
+					fileList = append(fileList, name)
+				}
+			}
+		}
+	}
+
+	if len(fileList) == 0 {
+		fmt.Println("❌ No matching files to probe.")
+		return
+	}
+
+	fmt.Printf("\n🎯 Probing target: %s %s\n", targetFolder, fileList)
+
+	// Handle Ctrl+C
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		for range sigChan {
+			stopCurrent = true
+			fmt.Print("\r")
+		}
+	}()
+
+	for _, file := range fileList {
+		stopCurrent = false
+		fmt.Printf("\n🔍 Probing file: %s\n", file)
+		filePath := filepath.Join(targetFolder, file)
+		probeFile(filePath, targetProbePath, file)
+		if !stopCurrent {
+			fmt.Printf("✅ Probing completed: %s\n", file)
+		}
+	}
+	fmt.Printf("\n📁 Probe output saved in: %s\n", targetProbePath)
+	fmt.Println(targetProbePath) // 👈 THIS one is important — this is what run.sh will capture!
+}
+
+func runManualMode() {
 	analyticsPath := "analytics"
 
 	if _, err := os.Stat(analyticsPath); os.IsNotExist(err) {
@@ -69,8 +152,8 @@ func main() {
 		return
 	}
 
-	fmt.Println("\n📝 Files to probe:")
 	var fileList []string
+	fmt.Println("\n📝 Files to probe:")
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".txt") {
 			fileList = append(fileList, file.Name())
@@ -86,21 +169,18 @@ func main() {
 	// Handle Ctrl+C
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
 	go func() {
 		for range sigChan {
-			stopCurrent = true // Stop only the current file probing
-			fmt.Print("\r")    // Just move to the next line, no extra message
+			stopCurrent = true
+			fmt.Print("\r")
 		}
 	}()
 
 	for _, file := range fileList {
-		stopCurrent = false // Reset for the next file
-
-		filePath := filepath.Join(targetPath, file)
+		stopCurrent = false
 		fmt.Printf("\n🔍 Probing file: %s\n", file)
+		filePath := filepath.Join(targetPath, file)
 		probeFile(filePath, targetProbePath, file)
-
 		if !stopCurrent {
 			fmt.Printf("✅ Probing completed: %s\n", file)
 		}
@@ -193,7 +273,7 @@ func logFailedURL(targetProbePath, url string, err error) {
 	}
 	defer file.Close()
 
-	logEntry := fmt.Sprintf("%s | %v\n", url, err)
+	logEntry := fmt.Sprintf("%s\n", url)
 	file.WriteString(logEntry)
 }
 
