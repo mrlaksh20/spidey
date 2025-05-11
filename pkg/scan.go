@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -22,19 +23,16 @@ const (
 	RetryDelay = 3 * time.Second
 )
 
-// Compiled regex struct
 type CompiledPattern struct {
 	Name  string
 	Regex *regexp.Regexp
 }
 
-// ScanResult stores the findings per URL
 type ScanResult struct {
 	URL      string            `json:"url"`
 	Findings map[string]string `json:"findings"`
 }
 
-// Load and compile regex patterns once
 func loadRegexPatterns() ([]CompiledPattern, error) {
 	data, err := ioutil.ReadFile(RegexFile)
 	if err != nil {
@@ -58,7 +56,6 @@ func loadRegexPatterns() ([]CompiledPattern, error) {
 	return compiled, nil
 }
 
-// Fetch full response with retries
 func fetchResponse(url string) (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	for i := 0; i < MaxRetries; i++ {
@@ -75,7 +72,6 @@ func fetchResponse(url string) (string, error) {
 	return "", fmt.Errorf("failed after %d retries", MaxRetries)
 }
 
-// Scan URL content using precompiled patterns
 func scanContent(url, content string, patterns []CompiledPattern) *ScanResult {
 	result := &ScanResult{URL: url, Findings: make(map[string]string)}
 	for _, p := range patterns {
@@ -97,7 +93,6 @@ func scanContent(url, content string, patterns []CompiledPattern) *ScanResult {
 	return nil
 }
 
-// Print leaks with colors
 func printLeak(workerID int, url string, findings map[string]string) {
 	bold := "\033[1m"
 	yellow := "\033[33m"
@@ -225,13 +220,22 @@ func selectFiles() []string {
 }
 
 func main() {
+	cliFiles := flag.String("f", "", "Comma-separated list of files to scan (inside snapurls dir)")
+	flag.Parse()
+
 	patterns, err := loadRegexPatterns()
 	if err != nil {
 		fmt.Println("❌ Error loading regex patterns:", err)
 		return
 	}
 
-	filesToScan := selectFiles()
+	var filesToScan []string
+	if *cliFiles != "" {
+		filesToScan = strings.Split(*cliFiles, ",")
+	} else {
+		filesToScan = selectFiles()
+	}
+
 	if len(filesToScan) == 0 {
 		fmt.Println("❌ No valid files selected. Exiting.")
 		return
