@@ -58,4 +58,3 @@ func main() {
 	domain := os.Args[1]
 	fetchAllURLs(domain)
 }
-
