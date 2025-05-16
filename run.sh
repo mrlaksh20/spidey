@@ -38,7 +38,7 @@ echo -e "\e[1;91m
                                                                  ++++++            +++++                                                                 
                                                                   +   +++********+++===                                                                  
                                                                    *   +          +                  Developed by [>] "${YELLOW}Laksh ${MAGENTA}[✔]${RESET}"
-                                                                                                     [+] MARK 1 
+                                                                                 *                   [+] Version: v12.20.0
 \e[0m"
 
 # Function to get valid domain input
@@ -239,12 +239,13 @@ if [[ "$MODE" == "auto" ]]; then
         exit 1
     fi
     # ------------------ LEAK SCANNING TIME -------------------
+
     echo -e "${BLUE}[AUTO] 🕵️ Starting scan.go leak detection...${RESET}"
 
     SCAN_ORDER=("config404" "config200" "js404" "json404" "html404" "otherfiles404" "js200" "json200" "html200" "otherfiles200" "configotherres" "jsonotherres" "jsotherres" "htmlotherres" "otherfilesotherres" )
 
     for category in "${SCAN_ORDER[@]}"; do
-        scan_file="${domain}_${category}_scan.txt"
+        scan_file="${probe_basename}_${category}_scan.txt"
         full_path="snapurls/$scan_file"
 
         if [[ -f "$full_path" ]]; then
@@ -255,3 +256,4 @@ if [[ "$MODE" == "auto" ]]; then
         fi
     done
 fi
+
