@@ -227,7 +227,8 @@ func formatMMDD(mmdd int) string {
 
 func saveResults(url string, dates []string) {
 	result := fmt.Sprintf("%s:{[%s]}\n", url, strings.Join(dates, ","))
-
+	// 👇 SHOW the result exactly how it's saved
+	fmt.Printf("📦 [dd/mm/yyyy] Archived Snapday: %s", result)
 	yearFileBase := filepath.Base(yearFile)
 	yearFileDir := filepath.Dir(yearFile)
 
@@ -256,7 +257,7 @@ func saveResults(url string, dates []string) {
 
 func trigger404_3(targetFolder, targetFileName string) {
 	tsFile := fmt.Sprintf("404_analysis/%s/%s_ts.txt", targetFolder, targetFileName)
-	fmt.Printf("💀 Extracting HHMMSS from %s\n", tsFile)
+	fmt.Printf("💀 [404_3.go] Extracting HHMMSS from snapdays %s\n", tsFile)
 
 	cmd := exec.Command("go", "run", "pkg/404_3.go", tsFile)
 	cmd.Stdout = os.Stdout
