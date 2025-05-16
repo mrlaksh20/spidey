@@ -18,6 +18,17 @@ const probeFolder = "probe"
 
 var stopCurrent bool // Only stops the current file's probing, not the whole process
 
+var fastClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     100,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  false,
+	},
+}
+
 func main() {
 	var targetFolder string
 	var fileTypes string
@@ -195,12 +206,13 @@ func probeFile(filePath, targetProbePath, fileName string) {
 	}
 	defer file.Close()
 
+	const MaxWorkers = 30
 	var wg sync.WaitGroup
-	urlCh := make(chan string)
+	urlCh := make(chan string, 100) // Buffered for less blocking
 
-	for i := 0; i < 15; i++ {
+	for i := 0; i < MaxWorkers; i++ {
 		wg.Add(1)
-		go func() {
+		go func(workerID int) {
 			defer wg.Done()
 			for url := range urlCh {
 				if stopCurrent {
@@ -210,15 +222,14 @@ func probeFile(filePath, targetProbePath, fileName string) {
 					logFailedURL(targetProbePath, url, err)
 				}
 			}
-		}()
+		}(i)
 	}
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		if stopCurrent {
-			break // Stop reading this file and move on
+			break
 		}
-
 		url := strings.TrimSpace(scanner.Text())
 		if url != "" {
 			urlCh <- url
@@ -230,17 +241,18 @@ func probeFile(filePath, targetProbePath, fileName string) {
 }
 
 func probeURL(url, targetProbePath, fileName string) error {
-	client := http.Client{
-		Timeout: 10 * time.Second,
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("request creation failed: %v", err)
 	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (SpideyScan/1.0)")
 
-	resp, err := client.Get(url)
+	resp, err := fastClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("HTTP request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Determine response status category
 	var statusSuffix string
 	switch resp.StatusCode {
 	case 200:
@@ -253,11 +265,10 @@ func probeURL(url, targetProbePath, fileName string) error {
 		statusSuffix = "otherres"
 	}
 
-	// Modify the filename with status code
-	baseName := strings.TrimSuffix(fileName, ".txt") // Remove .txt extension
-	newFileName := fmt.Sprintf("%s%s.txt", baseName, statusSuffix) // Append status
-
+	baseName := strings.TrimSuffix(fileName, ".txt")
+	newFileName := fmt.Sprintf("%s%s.txt", baseName, statusSuffix)
 	savePath := filepath.Join(targetProbePath, newFileName)
+
 	if err := saveURL(savePath, url); err != nil {
 		return fmt.Errorf("failed to save URL: %v", err)
 	}
