@@ -51,6 +51,16 @@ func main() {
 	} else {
 		fmt.Printf("📁 Single File Mode: %s\n", targetPath)
 		runYearExtraction(targetPath)
+	// Trigger 404_2.go manually for single file mode
+	target, base := extractTargetInfo(targetPath)
+	yrFile := filepath.Join("404_analysis", target, fmt.Sprintf("%s_%s_yr.txt", target, base))
+	fmt.Printf("\n🔥 Running 404_2.go with: %s\n", yrFile)
+	cmd := exec.Command("go", "run", "pkg/404_2.go", yrFile)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+	fmt.Printf("❌ Error running 404_2.go on %s: %v\n", yrFile, err)
+	}
 	}
 }
 
@@ -193,30 +203,34 @@ func checkWebArchive(targetURL, timestampFile, yearFile string) {
 	}
 
 	if archiveResponse.FirstTS == archiveResponse.LastTS {
-		for _, status := range archiveResponse.Status {
-			if strings.Contains(status, "2") {
-				snap := fmt.Sprintf("https://web.archive.org/web/%sif_/%s", archiveResponse.FirstTS, targetURL)
-				if _, ok := seenTimestamps.Load(snap); !ok {
-					saveToFile(timestampFile, snap)
-					seenTimestamps.Store(snap, true)
-				}
-			}
-		}
-	} else {
-		var years []string
-		for yr, status := range archiveResponse.Status {
-			if strings.Contains(status, "2") {
-				years = append(years, yr)
-			}
-		}
-		if len(years) > 0 {
-			line := fmt.Sprintf("%s:[%s]", targetURL, strings.Join(years, ","))
-			if _, ok := seenYears.Load(line); !ok {
-				saveToFile(yearFile, line)
-				seenYears.Store(line, true)
+	for _, status := range archiveResponse.Status {
+		if strings.Contains(status, "2") {
+			snap := fmt.Sprintf("https://web.archive.org/web/%sif_/%s", archiveResponse.FirstTS, targetURL)
+			if _, ok := seenTimestamps.Load(snap); !ok {
+				saveToFile(timestampFile, snap)
+				fmt.Printf("🧭 1 archive snapshot found: %s\n", snap) // 💬 ADDED THIS
+				seenTimestamps.Store(snap, true)
 			}
 		}
 	}
+	} else {
+	var years []string
+	for yr, status := range archiveResponse.Status {
+		if strings.Contains(status, "2") {
+			years = append(years, yr)
+		}
+	}
+	if len(years) > 0 {
+		line := fmt.Sprintf("%s:[%s]", targetURL, strings.Join(years, ","))
+		if _, ok := seenYears.Load(line); !ok {
+			saveToFile(yearFile, line)
+			fmt.Printf("📚 Archive years found for %s: [%s]\n", targetURL, strings.Join(years, ","))
+			seenYears.Store(line, true)
+		}
+	}
+}
+
+
 }
 
 func saveToFile(file, data string) {
