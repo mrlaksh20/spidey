@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"flag"
+	"net/http"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"regexp"
 	"strings"
@@ -56,20 +56,39 @@ func loadRegexPatterns() ([]CompiledPattern, error) {
 	return compiled, nil
 }
 
+
+var customClient = &http.Client{
+	Timeout: 5 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     100,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  false,
+	},
+}
+
 func fetchResponse(url string) (string, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
 	for i := 0; i < MaxRetries; i++ {
-		resp, err := client.Get(url)
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (SpideyReconTool)")
+
+		resp, err := customClient.Do(req)
 		if err == nil && resp.StatusCode == 200 {
+			defer resp.Body.Close()
 			body, _ := ioutil.ReadAll(resp.Body)
-			resp.Body.Close()
 			return string(body), nil
 		}
-		if i < MaxRetries-1 {
-			time.Sleep(RetryDelay)
+
+		if resp != nil {
+			resp.Body.Close()
 		}
+		time.Sleep(RetryDelay)
 	}
-	return "", fmt.Errorf("failed after %d retries", MaxRetries)
+	return "", fmt.Errorf("💥 failed after retries: %s", url)
 }
 
 func scanContent(url, content string, patterns []CompiledPattern) *ScanResult {
@@ -244,5 +263,5 @@ func main() {
 	for _, file := range filesToScan {
 		processFile(file, patterns)
 	}
-	fmt.Println("🎉 Scan completed!")
+	fmt.Println("...")
 }
