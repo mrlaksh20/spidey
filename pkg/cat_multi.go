@@ -265,3 +265,4 @@ func appendToFile(filename, line string) error {
 	_, err = file.WriteString(line + "\n")
 	return err
 }
+
