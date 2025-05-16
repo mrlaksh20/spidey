@@ -99,6 +99,7 @@ func processFile(tsFile string) {
 				timestamps := fetchTimestampsWithRetry(url, date, 5) // Retry logic applied
 				for _, ts := range timestamps {
 					finalURL := fmt.Sprintf("https://web.archive.org/web/%s%sif_/%s", date, ts, url)
+					fmt.Printf("ARCHIVED SNAPSHOT FOUND: %s\n", finalURL)
 					ymdhms2Output.WriteString(finalURL + "\n") // Save in _ymdhms2.txt
 				}
 			}(url, date)
@@ -109,7 +110,7 @@ func processFile(tsFile string) {
 
 	// Combine _ymdhms1.txt and _ymdhms2.txt into _scan.txt
 	combineFiles(ymdhms1File, ymdhms2File, scanFile)
-	fmt.Printf("✅ Combined archived URLs saved: %s\n", scanFile)
+	fmt.Printf("✅ Full archived URLs saved: %s\n", scanFile)
 }
 
 // Parse line to extract URL and timestamps
@@ -241,3 +242,4 @@ func appendFileContent(srcFile string, destFile *os.File) {
 		destFile.WriteString(scanner.Text() + "\n")
 	}
 }
+
