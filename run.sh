@@ -38,7 +38,7 @@ echo -e "\e[1;91m
                                                                  ++++++            +++++                                                                 
                                                                   +   +++********+++===                                                                  
                                                                    *   +          +                  Developed by [>] "${YELLOW}Laksh ${MAGENTA}[✔]${RESET}"
-                                                                                 *                   [+] Version: v12.20.0
+                                                                                 *                   [+] Version: MARK-43
 \e[0m"
 
 # Function to get valid domain input
