@@ -197,7 +197,6 @@ func runManualMode() {
 		}
 	}
 }
-
 func probeFile(filePath, targetProbePath, fileName string) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -206,13 +205,57 @@ func probeFile(filePath, targetProbePath, fileName string) {
 	}
 	defer file.Close()
 
+	// Count total URLs first
+	var urls []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		url := strings.TrimSpace(scanner.Text())
+		if url != "" {
+			urls = append(urls, url)
+		}
+	}
+	total := len(urls)
+	if total == 0 {
+		fmt.Printf("⚠️  No URLs found in %s\n", fileName)
+		return
+	}
+
+	// Reset file pointer
+	file.Seek(0, 0)
+
 	const MaxWorkers = 30
 	var wg sync.WaitGroup
-	urlCh := make(chan string, 100) // Buffered for less blocking
+	urlCh := make(chan string, 100)
+
+	var completed int
+	var mu sync.Mutex
+
+	start := time.Now()
+
+	// Progress Bar ticker
+	ticker := time.NewTicker(300 * time.Millisecond)
+	go func() {
+		for range ticker.C {
+			mu.Lock()
+			percent := float64(completed) / float64(total) * 100
+			barWidth := 20
+			doneBars := int(percent / (100 / float64(barWidth)))
+			bar := strings.Repeat("█", doneBars) + strings.Repeat("░", barWidth-doneBars)
+
+			elapsed := time.Since(start)
+			rate := float64(completed) / elapsed.Seconds()
+			remaining := time.Duration(float64(total-completed)/rate) * time.Second
+
+			status := fmt.Sprintf("\r🔍 %s [%d/%d] [%s] %4.1f%% ETA: %s", fileName, completed, total, bar, percent, remaining.Truncate(time.Second))
+
+			fmt.Print(status)
+			mu.Unlock()
+		}
+	}()
 
 	for i := 0; i < MaxWorkers; i++ {
 		wg.Add(1)
-		go func(workerID int) {
+		go func() {
 			defer wg.Done()
 			for url := range urlCh {
 				if stopCurrent {
@@ -221,23 +264,29 @@ func probeFile(filePath, targetProbePath, fileName string) {
 				if err := probeURL(url, targetProbePath, fileName); err != nil {
 					logFailedURL(targetProbePath, url, err)
 				}
+				mu.Lock()
+				completed++
+				mu.Unlock()
 			}
-		}(i)
+		}()
 	}
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
+	for _, url := range urls {
 		if stopCurrent {
 			break
 		}
-		url := strings.TrimSpace(scanner.Text())
-		if url != "" {
-			urlCh <- url
-		}
+		urlCh <- url
 	}
 
 	close(urlCh)
 	wg.Wait()
+	ticker.Stop()
+
+	// Final flush
+	percent := float64(completed) / float64(total) * 100
+	bar := strings.Repeat("█", 20)
+	finalLine := fmt.Sprintf("\r🔍 %s [%d/%d] [%s] %4.1f%% ETA: 0s\n", fileName, completed, total, bar, percent)
+	fmt.Print(finalLine)
 }
 
 func probeURL(url, targetProbePath, fileName string) error {
