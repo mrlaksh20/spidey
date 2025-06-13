@@ -223,7 +223,7 @@ func probeFile(filePath, targetProbePath, fileName string) {
 	// Reset file pointer
 	file.Seek(0, 0)
 
-	const MaxWorkers = 30
+	const MaxWorkers = 70
 	var wg sync.WaitGroup
 	urlCh := make(chan string, 100)
 
