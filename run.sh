@@ -38,7 +38,7 @@ echo -e "\e[1;91m
                                                                  ++++++            +++++                                                                 
                                                                   +   +++********+++===                                                                  
                                                                    *   +          +                  Developed by [>] "${YELLOW}Laksh ${MAGENTA}[✔]${RESET}"
-                                                                                 *                   [+] Version: MARK-10
+                                                                                 *                   [+] Version: MARK-11
 \e[0m"
 
 # Function to get valid domain input
@@ -233,7 +233,7 @@ if [[ "$MODE" == "auto" ]]; then
 
     if [[ -d "$probe_output_folder" ]]; then
         echo -e "${GREEN}[AUTO] 📁 Running 404 scanner on $probe_output_folder${RESET}"
-        go run pkg/404_1.go "$probe_output_folder" -f config404,config200,archive404,archive200,js404,json404,html404,js200,json200,html200,otherfiles200,otherfiles404,jsotherres,jsonotherres,configotherres,htmlotherres,otherfilesotherres
+        go run pkg/404_1.go "$probe_output_folder" -f config404,config200,archive404,archive200,js404,json404,html404,js200,json200,html200,otherfiles200,otherfiles404,jsotherres,jsonotherres,configotherres,htmlotherres,otherfilesotherres -yr 2025,2024 #default year,its changable
     else
         echo -e "${RED}[AUTO] ❌ Probe output folder not found: $probe_output_folder${RESET}"
         exit 1
